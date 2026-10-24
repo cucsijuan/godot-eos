@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Builds the Epic Online Services C# SDK, which is not part of this repository (Epic's licence): it is compiled from
+    $(EosSdkDir) (the SDK's folder with Source/ and Bin/), together with the platform's native library. A game sets
+    EosSdkDir when it references GodotEos; by default it is ../eos-sdk/SDK next to this repository.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WarningLevel>0</WarningLevel>
+    <NoWarn>$(NoWarn);CS0108;CS0114;CS0168;CS0219;CS0414;CS0618;CS0649;CS1591;CS8632</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EosSdkDir Condition="'$(EosSdkDir)' == ''">$(MSBuildThisFileDirectory)../../../eos-sdk/SDK</EosSdkDir>
+    <EosTarget Condition="'$(GodotTargetPlatform)' == 'windows'">windows</EosTarget>
+    <EosTarget Condition="'$(GodotTargetPlatform)' == 'linuxbsd'">linux</EosTarget>
+    <EosTarget Condition="'$(EosTarget)' == '' And $([MSBuild]::IsOSPlatform('Windows'))">windows</EosTarget>
+    <EosTarget Condition="'$(EosTarget)' == ''">linux</EosTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EosTarget)' == 'windows'">
+    <DefineConstants>$(DefineConstants);EOS_PLATFORM_WINDOWS_64</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(EosTarget)' == 'linux'">
+    <DefineConstants>$(DefineConstants);EOS_PLATFORM_LINUX</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(EosSdkDir)/Source/**/*.cs" />
+    <None Condition="'$(EosTarget)' == 'windows'" Include="$(EosSdkDir)/Bin/EOSSDK-Win64-Shipping.dll" Link="EOSSDK-Win64-Shipping.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Condition="'$(EosTarget)' == 'linux'" Include="$(EosSdkDir)/Bin/libEOSSDK-Linux-Shipping.so" Link="libEOSSDK-Linux-Shipping.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

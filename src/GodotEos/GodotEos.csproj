@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Sign-in, lobbies and peer-to-peer packets over the Epic Online Services SDK, for Godot .NET games (no Godot API used). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>GodotEos</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../EosSdk/EosSdk.csproj" />
+  </ItemGroup>
+</Project>
