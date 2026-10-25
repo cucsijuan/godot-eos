@@ -203,15 +203,21 @@ public sealed class EosLobbies
     {
         var lobbies = platform.GetLobbyInterface();
         lobby.Close();
+        _platform.Begin();
+        void Answered(Result result)
+        {
+            _platform.Answered();
+            done(result == Result.Success);
+        }
         if (lobby.IsOwner)
         {
             var destroy = new DestroyLobbyOptions { LocalUserId = _platform.User, LobbyId = lobby.Id };
-            lobbies.DestroyLobby(ref destroy, null, (ref DestroyLobbyCallbackInfo info) => done(info.ResultCode == Result.Success));
+            lobbies.DestroyLobby(ref destroy, null, (ref DestroyLobbyCallbackInfo info) => Answered(info.ResultCode));
         }
         else
         {
             var leave = new LeaveLobbyOptions { LocalUserId = _platform.User, LobbyId = lobby.Id };
-            lobbies.LeaveLobby(ref leave, null, (ref LeaveLobbyCallbackInfo info) => done(info.ResultCode == Result.Success));
+            lobbies.LeaveLobby(ref leave, null, (ref LeaveLobbyCallbackInfo info) => Answered(info.ResultCode));
         }
     }
 
@@ -240,6 +246,7 @@ public sealed class EosLobbies
         {
             if (info.LobbyId?.ToString() is not { } id || !_joined.TryGetValue(id, out var lobby) || info.TargetUserId?.ToString() is not { } member)
                 return;
+            _platform.Say($"Lobby {id}: {member} {info.CurrentStatus}");
             switch (info.CurrentStatus)
             {
                 case LobbyMemberStatus.Joined:

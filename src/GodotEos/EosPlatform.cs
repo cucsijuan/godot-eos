@@ -29,7 +29,8 @@ public sealed class EosPlatformOptions
 /// The Epic Online Services platform, run on a thread of its own: every SDK call happens there, and the game's side gets
 /// tasks back. It signs the player in with a device account (no Epic account needed) and keeps the sign-in alive: it
 /// lasts an hour, and the platform signs in again before it runs out, retrying a few times over a few minutes.
-/// <see cref="EosLobbies"/> and <see cref="EosP2P"/> work on top of it.
+/// <see cref="EosLobbies"/> and <see cref="EosP2P"/> work on top of it. Keep one for the whole run of the game: the SDK
+/// is initialized once a process and never shut down (Epic's SDK can't start again after that).
 /// </summary>
 public sealed class EosPlatform : IDisposable
 {
@@ -125,6 +126,13 @@ public sealed class EosPlatform : IDisposable
 
     internal void Say(string what) => Log?.Invoke(what);
 
+    /// <summary>A call whose answer stopping should wait for (leaving a lobby): begun, and answered.</summary>
+    internal void Begin() => Interlocked.Increment(ref _pending);
+
+    internal void Answered() => Interlocked.Decrement(ref _pending);
+
+    private int _pending;
+
     internal static void Fail<T>(TaskCompletionSource<T> done, string what, Result result) =>
         done.TrySetException(new EosException($"Online services failed {what}: {result}.", result));
 
@@ -196,15 +204,25 @@ public sealed class EosPlatform : IDisposable
         if (!_keys.IsComplete)
             throw new InvalidOperationException("the product's keys are missing");
         FindNativeLibrary();
-        LoggingInterface.SetLogLevel(LogCategory.AllCategories, _options.VerboseLog ? LogLevel.Verbose : LogLevel.Warning);
-        LoggingInterface.SetCallback((ref LogMessage message) => Log?.Invoke($"EOS {message.Category}: {message.Message}"));
-        if (Interlocked.Increment(ref _initialized) == 1)
+        if (Interlocked.Exchange(ref _initialized, 1) == 0)
         {
-            var init = new InitializeOptions { ProductName = _options.ProductName, ProductVersion = _options.ProductVersion };
+            // Once a process: the SDK can't be initialized again after shutting down, so it never shuts down (the
+            // process's end takes it)
+            // Both must be there (the SDK says InvalidParameters for an empty one)
+            var init = new InitializeOptions
+            {
+                ProductName = string.IsNullOrEmpty(_options.ProductName) ? "Game" : _options.ProductName,
+                ProductVersion = string.IsNullOrEmpty(_options.ProductVersion) ? "1" : _options.ProductVersion,
+            };
             var result = PlatformInterface.Initialize(ref init);
             if (result != Result.Success && result != Result.AlreadyConfigured)
                 throw new InvalidOperationException(result.ToString());
         }
+        // After initializing: before it, the SDK takes no log settings
+        var logged = LoggingInterface.SetCallback((ref LogMessage message) => Log?.Invoke($"EOS {message.Category}: {message.Message}"));
+        LoggingInterface.SetLogLevel(LogCategory.AllCategories, _options.VerboseLog ? LogLevel.Verbose : LogLevel.Warning);
+        if (logged != Result.Success)
+            Log?.Invoke($"Online services: no SDK log ({logged})");
         Directory.CreateDirectory(_options.CacheDirectory);
         var options = new Options
         {
@@ -228,7 +246,8 @@ public sealed class EosPlatform : IDisposable
             return;
         try { Stopping?.Invoke(_platform, _user); }
         catch (Exception e) { Log?.Invoke($"Online services, stopping: {e.Message}"); }
-        for (int i = 0; i < 50; i++)                    // let the last calls go out (leaving lobbies, closing connections)
+        // Let the last calls go out (leaving lobbies, closing connections): a moment, and up to 3 s for answers awaited
+        for (int i = 0; i < 300 && (i < 20 || _pending > 0); i++)
         {
             while (_work.TryDequeue(out var work))
                 work();
@@ -240,8 +259,6 @@ public sealed class EosPlatform : IDisposable
         _platform.Release();
         _platform = null;
         _user = null;
-        if (Interlocked.Decrement(ref _initialized) == 0)
-            PlatformInterface.Shutdown();
     }
 
     // ------------------------------------------------------------------ signing in

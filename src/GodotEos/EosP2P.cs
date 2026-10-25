@@ -139,13 +139,17 @@ public sealed class EosP2P : IDisposable
                 return;
             }
             _open[peer] = 0;
+            _platform.Say($"P2P: accepted {peer}");
             var accept = new AcceptConnectionOptions { LocalUserId = info.LocalUserId, RemoteUserId = info.RemoteUserId, SocketId = _socket };
             p2p.AcceptConnection(ref accept);
         });
         var closed = new AddNotifyPeerConnectionClosedOptions { LocalUserId = user, SocketId = _socket };
         _closings = p2p.AddNotifyPeerConnectionClosed(ref closed, null, (ref OnRemoteConnectionClosedInfo info) =>
         {
-            if (info.RemoteUserId?.ToString() is { } peer && _open.TryRemove(peer, out _))
+            if (info.RemoteUserId?.ToString() is not { } peer)
+                return;
+            _platform.Say($"P2P: connection with {peer} closed ({info.Reason})");
+            if (_open.TryRemove(peer, out _))
                 _closed.Enqueue(peer);
         });
     }
